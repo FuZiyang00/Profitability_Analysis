@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from typing import List
+import pandas as pd
 
 class PolicyEncoder(nn.Module):
     """
@@ -100,36 +101,19 @@ class ContrastivePolicyNetwork(nn.Module):
         similarities = torch.bmm(query_embeddings_norm.unsqueeze(1), 
                                 candidates_embeddings_norm.transpose(1, 2)).squeeze(1)
 
-        return similarities 
+        return similarities / self.temperature
     
     def compute_loss(self, similarities: torch.Tensor, labels: torch.Tensor):
         """
         Contrastive loss 
         Args:
-        similarities: Similarity scores of shape (batch_size, n_candidates)
-        labels: True labels of shape (batch_size,)
-        return:
-        Cross-entropy loss 
+            similarities: Similarity scores of shape (batch_size, n_candidates)
+            labels: True labels of shape (batch_size,)
+        Returns:
+            Cross-entropy loss 
         """
 
-        loss = F.cross_entropy(similarities, labels)
-
-        # Get predictions (highest similarity indices)
-        predictions = torch.argmax(similarities, dim=1)  
-
-        print(f"\nBatch Analysis (Loss: {loss.item():.4f}):")
-        correct_count = 0
-        for i in range(similarities.size(0)):
-            pred_idx = predictions[i].item()
-            true_idx = labels[i].item()
-
-            if pred_idx == true_idx:
-                correct_count += 1
-        
-        if i == similarities.size(0) - 1:
-            print(f"{correct_count} correct out of {similarities.size(0)} samples")
-
-        return loss
+        return F.cross_entropy(similarities, labels)
   
     def get_embeddings(self, policies: torch.Tensor): 
 
@@ -162,6 +146,8 @@ class ContrastivePolicyTrainer:
         """ 
         self.model.train()
         total_loss = 0.0
+        correct_predictions = 0
+        total_predictions = 0
         num_batches = 0
 
         for batch in dataloader:
@@ -170,8 +156,13 @@ class ContrastivePolicyTrainer:
             labels = batch['labels'].to(device)
 
             # forward pass
-            cosine_sim = self.model.forward(query, candidates)
-            loss = self.model.compute_loss(cosine_sim, labels)
+            similarities = self.model.forward(query, candidates)
+            loss = self.model.compute_loss(similarities, labels)
+
+            # Calculate accuracy
+            predictions = torch.argmax(similarities, dim=1)
+            correct_predictions += (predictions == labels).sum().item()
+            total_predictions += labels.size(0)
 
             # backward pass 
             self.optimizer.zero_grad()
@@ -179,10 +170,13 @@ class ContrastivePolicyTrainer:
             self.optimizer.step()
 
             total_loss += loss.item()
-            num_batches +=1
-            
+            num_batches += 1
+
         avg_loss = total_loss / num_batches
-        return avg_loss 
+        avg_accuracy = correct_predictions / total_predictions
+
+        return {'avg_loss': avg_loss,
+                'avg_accuracy': avg_accuracy}
 
     def evaluate(self, dataloader: DataLoader, device: torch.device):
         """
@@ -237,18 +231,22 @@ class ContrastivePolicyTrainer:
         
         # Training history
         train_losses = []
+        train_accuracies = []
         val_losses = []
         val_accuracies = []
-        best_val_loss = float('inf')
+        epochs = []
 
         print(f"Starting training for {n_epochs} epochs...")
         print(f"Device: {torch.device}")
 
         for epoch in range(n_epochs):
-            # training phase 
-            train_loss = trainer.train_epoch(train_dataloader, device)
+            
+            # training step
+            train_metrics = trainer.train_epoch(train_dataloader, device)
+            train_loss = train_metrics['avg_loss']
+            train_accuracy = train_metrics['avg_accuracy']
 
-            # Validation phase
+            # validation step
             val_metrics = trainer.evaluate(validation_dataloader, device)
             val_loss = val_metrics['loss']
             val_accuracy = val_metrics['accuracy']
@@ -258,18 +256,24 @@ class ContrastivePolicyTrainer:
             
             # Store metrics
             train_losses.append(train_loss)
+            train_accuracies.append(train_accuracy)
             val_losses.append(val_loss)
             val_accuracies.append(val_accuracy)
+            epochs.append(epoch + 1)
 
             # Print progress
             current_lr = trainer.optimizer.param_groups[0]['lr']
-            print(f"Epoch {epoch+1:3d}/{n_epochs} | "
-                f"Train Loss: {train_loss:.4f} | "
-                f"Val Loss: {val_loss:.4f} | "
-                f"Val Acc: {val_accuracy:.4f} | "
-                f"LR: {current_lr:.2e}")
+
+            print(f"\nEpoch {epoch+1:3d} Analysis:")
+            print("T_Acc | T_Loss | V_Acc | V_Loss   | LR")
+            print("------|--------|-------|----------|---")
+            print(f" {train_accuracy:.2f} | {train_loss:.2f}   | {val_accuracy:.2f}   | {val_loss:.2f}       | {current_lr:.2e}")
+
+        metrics = {'epoch': epochs,
+                   'train_losses': train_losses,
+                   'train_accuracies': train_accuracies,
+                   'val_losses': val_losses,
+                   'val_accuracies': val_accuracies}
         
-        return {'train_losses': train_losses,
-                'val_losses': val_losses,
-                'val_accuracies': val_accuracies,
-                'best_val_loss': best_val_loss}
+        df_metrics = pd.DataFrame(metrics)
+        return df_metrics

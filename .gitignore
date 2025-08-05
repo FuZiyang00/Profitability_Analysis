@@ -4,5 +4,6 @@ data/new_features_data.csv
 
 /env 
 __pycache__/
+/notebooks/
 
 *.ipynb

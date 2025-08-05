@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import RobustScaler, StandardScaler, MinMaxScaler
 
-
 class Data_Imputation:
 
     def percentage_missing_df(data):
