@@ -59,12 +59,6 @@ The model is trained by comparing **a query policy** against a set of **candidat
 
 As a benchmark, we train a **standard XGBoost classifier** on the same features and target.
 
-### Comparison Metrics:
-- Accuracy
-- AUC-ROC (optional)
-- Precision / Recall
-- Embedding space interpretability (qualitative)
-
 ---
 
 ## 📈 Evaluation 
