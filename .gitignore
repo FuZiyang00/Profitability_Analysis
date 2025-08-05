@@ -1,0 +1,8 @@
+data/final_data.csv
+data/imputed_data.csv
+data/new_features_data.csv
+
+/env 
+__pycache__/
+
+*.ipynb
