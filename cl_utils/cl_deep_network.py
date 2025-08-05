@@ -64,6 +64,12 @@ class ContrastivePolicyNetwork(nn.Module):
 
         super(ContrastivePolicyNetwork, self).__init__()
 
+        print(f"Working with input_dim: {input_dim} \n" 
+              f"hidden_dims: {hidden_dims} \n"
+              f"embedding_dim: {embedding_dim}, \n"
+              f"dropout_rate: {dropout_rate}, \n"
+              f"temperature: {temperature} \n")
+        
         self.encoder = PolicyEncoder(input_dim = input_dim,
                                      hidden_dims = hidden_dims, 
                                      embedding_dim = embedding_dim,
