@@ -6,3 +6,4 @@ scikit-learn==1.6.1
 tqdm==4.67.1
 shap==0.47.2
 xgboost==3.0.1
+torch==2.7.1
