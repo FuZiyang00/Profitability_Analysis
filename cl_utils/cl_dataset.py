@@ -3,6 +3,7 @@ import random
 import numpy as np
 from typing import List, Dict
 import pandas as pd
+import torch
 
 class ContrastivePolicyDataset(Dataset):
     def __init__(self, 
@@ -122,4 +123,27 @@ class ContrastivePolicyDataset(Dataset):
                                               replace=False).tolist()
 
         return sample_indices
+
+    @staticmethod
+    def collate_fn(batch):
+        """
+        Custom collate function to handle the contrastive learning samples.
+        """
+        anchors = torch.stack([torch.from_numpy(item['anchors']) for item in batch])
+        labels = torch.tensor([item['labels'] for item in batch])
+
+        # Keep candidates as nested list structure for flexible processing
+        candidates_batch = []
+        for item in batch:
+            item_candidates = [torch.from_numpy(c) for c in item['candidates']]
+            item_candidates_stacked = torch.stack(item_candidates)
+            # Shape: (n_candidates, input_dim)
+            candidates_batch.append(item_candidates_stacked)
+
+        candidates = torch.stack(candidates_batch)
+
+        return {'anchors': anchors,
+                'candidates': candidates,  # List of lists of tensors
+                'labels': labels}
+
 

@@ -265,9 +265,9 @@ class ContrastivePolicyTrainer:
             current_lr = trainer.optimizer.param_groups[0]['lr']
 
             print(f"\nEpoch {epoch+1:3d} Analysis:")
-            print("T_Acc | T_Loss | V_Acc | V_Loss   | LR")
-            print("------|--------|-------|----------|---")
-            print(f" {train_accuracy:.2f} | {train_loss:.2f}   | {val_accuracy:.2f}   | {val_loss:.2f}       | {current_lr:.2e}")
+            print("T_Acc | T_Loss | V_Acc | V_Loss   | LR      |")
+            print("------|--------|-------|----------|----------")
+            print(f" {train_accuracy:.2f} | {train_loss:.2f}   | {val_accuracy:.2f}  | {val_loss:.2f}     | {current_lr:.2e} |")
 
         metrics = {'epoch': epochs,
                    'train_losses': train_losses,
