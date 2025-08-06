@@ -3,7 +3,7 @@ from cl_utils.cl_dataset import ContrastivePolicyDataset
 import torch
 from torch.utils.data import DataLoader
 import pandas as pd
-from src.utils import get_dummies_cols, evaluate_model
+from src.utils import get_dummies_cols
 from typing import List
  
 class ContrastiveLearningPipeline:
@@ -80,6 +80,12 @@ class ContrastiveLearningPipeline:
                                                embedding_dim=embedding_dim,
                                                dropout_rate=dropout_rate,
                                                temperature=temperature)
+        
+        return {"input_dim": input_dim,
+                "hidden_dims": hidden_dims,
+                "embedding_dim": embedding_dim,
+                "dropout_rate": dropout_rate,
+                "temperature": temperature}
     
     def init_trainer(self,
                      learning_rate: float= 5e-4,

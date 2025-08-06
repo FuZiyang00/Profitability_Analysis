@@ -2,6 +2,7 @@ from xgb_utils.xgb_pipeline import XGB_Pipeline
 from cl_utils.cl_pipeline import ContrastiveLearningPipeline
 import pandas as pd
 import torch
+import json
 
 if __name__ == "__main__":
     
@@ -39,7 +40,12 @@ if __name__ == "__main__":
     pipeline.dataloaders(batch_size=16)
 
     # initialize model
-    pipeline.init_model()
+    hyper_params = pipeline.init_model()
+    # write hyperparameters to a JSON file
+    with open('models/contrastive_model_hyperparams.json', 'w') as file:
+        json.dump(hyper_params, file, indent=4)
+
+    print(f"Working with : {hyper_params}")
 
     # initialize trainer
     pipeline.init_trainer() 
