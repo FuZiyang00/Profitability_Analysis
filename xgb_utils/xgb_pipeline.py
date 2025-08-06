@@ -1,7 +1,7 @@
 from xgb_utils.xgb_model import XG_Boost_Model 
 from typing import List
 import pandas as pd
-from src.utils import get_dummies_cols, evaluate_model
+from src.utils import get_dummies_cols
 
 class XGB_Pipeline():
     """Pipeline for XGBoost model training and evaluation."""
@@ -15,7 +15,7 @@ class XGB_Pipeline():
         self.model = None
         self.X_train_final, self.X_test_final = None, None
     
-    def training(self, dummy_cols: List[str] = None):
+    def training(self, dummy_cols: List[str] = None, save_path: str = None):
         """
         Train the XGBoost model with the provided training data.
         """
@@ -32,24 +32,14 @@ class XGB_Pipeline():
         
         self.xgb.xgb_fit_model(self.X_train_final, self.y_train)
         self.model = self.xgb.model
-    
-    def evaluation(self):
-        """
-        Evaluate the trained model on the test set.
-        """
-        if self.model is None:
-            raise ValueError("Model has not been trained yet. Please call training() first.")
-        
-        print("--" * 30)
-        print("Evaluating model performance on the test set")
+        self.model.save_model(save_path) 
+        print("Model saved to", save_path if save_path else "default path")
 
-        metrics = evaluate_model(self.model, self.X_test_final, self.y_test)
-        return metrics
-    
-    def run_pipeline(self, dummy_cols: List[str] = None):
+
+    def run_pipeline(self, dummy_cols: List[str] = None, 
+                     save_path: str = None):
         """
         Run the entire pipeline: training and evaluation.
         """
-        self.training(dummy_cols)
-        metrics = self.evaluation()
-        return metrics
+        self.training(dummy_cols, save_path=save_path)
+        

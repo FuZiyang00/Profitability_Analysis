@@ -47,6 +47,7 @@ class XG_Boost_Model:
         print(f"Training vs Validation size: {X_train.shape[0]} - {X_test.shape[0]}")
         print("Training set Class distribution:")
         print((y_train.value_counts()*100.0/len(y_train)).round(1))
+        print()
         print("Test set Class distribution:")
         print((y_test.value_counts()*100.0/len(y_test)).round(1))
     
