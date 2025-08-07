@@ -65,9 +65,9 @@ As a benchmark, we train a **standard XGBoost classifier** on the same features 
 
 | Metric          | **XGBoost** | **Contrastive Learning** |
 |-----------------|-------------|--------------------------|
-| **Accuracy**    |             |                          |
-| **Precision**   |             |                          |
-| **Recall**      |             |                          |
+| **Accuracy**    |    0.6213   |    0.7763                |
+| **Precision**   |    0.8196   |    0.7763                |
+| **Recall**      |    0.6567   |    0.9325                |
 
 ---
 

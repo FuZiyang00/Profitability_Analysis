@@ -36,16 +36,16 @@ def evaluate_model(y_pred, y_test):
     # auc = roc_auc_score(y_test, y_proba)
 
     # Print metrics
-    print(f"Accuracy: {accuracy:.4f}")
-    print(f"Precision: {precision:.4f}")
-    print(f"Recall: {recall:.4f}")
+    # print(f"Accuracy: {accuracy:.4f}")
+    # print(f"Precision: {precision:.4f}")
+    # print(f"Recall: {recall:.4f}")
     # print(f"AUC: {auc:.4f}")
 
     benchmark_precision = ((pd.Series(y_test).value_counts() * 100.0 / len(y_test)).round(1)[1]) / 100
     # test set label distribution
-    
-    print(f"Benchmark Precision: {benchmark_precision}") 
-    print(f"Model's precision improvement: {(precision - benchmark_precision).round(4)}")
+
+    # print(f"Benchmark Precision: {benchmark_precision}") 
+    # print(f"Model's precision improvement: {(precision - benchmark_precision).round(4)}")
 
     return {
         "accuracy": accuracy,
