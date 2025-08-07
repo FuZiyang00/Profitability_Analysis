@@ -3,6 +3,9 @@ from cl_utils.cl_pipeline import ContrastiveLearningPipeline
 import pandas as pd
 import torch
 import json
+import os
+from similarity_search.index_pipeline import HNSWPipeline
+import json
 
 if __name__ == "__main__":
     
@@ -24,12 +27,35 @@ if __name__ == "__main__":
                     'reg_alpha': 2, 
                     'importance_type': 'gain'}
     
-    xgb_pipeline = XGB_Pipeline(data, target, hyper_params, oot=2022)
+    # xgb_pipeline = XGB_Pipeline(data, target, hyper_params, oot=2022)
     dummy_cols = ['Sector', "REGION_GROUP"]
-    xgb_pipeline.run_pipeline(dummy_cols = dummy_cols, 
-                              save_path='models/xgb_model.json')  
+    # xgb_pipeline.run_pipeline(dummy_cols = dummy_cols, 
+    #                           save_path='models/xgb_model.json')  
 
     print("--" * 30)
+
+    if os.path.exists('models/contrastive_model.pth'):
+        print("Contrastive Learning model already exists. Skipping training.")
+        index_batch_size = 250 
+        index_pipeline = HNSWPipeline(data,
+                                      batch_size=index_batch_size, 
+                                      dummy_cols=dummy_cols)
+        
+        with open('models/contrastive_model_hyperparams.json', 'r') as file:
+            hyper_params = json.load(file)
+
+        index_pipeline.init_model(model_path='models/contrastive_model.pth',
+                                  model_hyperparams=hyper_params)
+        
+        index_pipeline.batch_generate_embeddings()
+        
+        index_pipeline.build_and_insert_index(M = 16, 
+                                              ef = 100,
+                                              ef_construction = 200,
+                                              index_path='models/hnsw_index')
+        
+        exit(0)
+        
 
     print("Training Contrastive Learning model...")
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
