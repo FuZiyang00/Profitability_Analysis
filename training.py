@@ -34,33 +34,36 @@ if __name__ == "__main__":
 
     print("--" * 30)
 
-    if os.path.exists('models/contrastive_model.pth'):
-        print("Contrastive Learning model already exists. Skipping training.")
-        index_batch_size = 250 
-        index_pipeline = HNSWPipeline(data,
-                                      batch_size=index_batch_size, 
-                                      dummy_cols=dummy_cols)
+    # if os.path.exists('models/contrastive_model.pth'):
+    #     print("Contrastive Learning model already exists. Skipping training.")
+    #     index_batch_size = 250 
+    #     index_pipeline = HNSWPipeline(data,
+    #                                   batch_size=index_batch_size, 
+    #                                   dummy_cols=dummy_cols)
         
-        with open('models/contrastive_model_hyperparams.json', 'r') as file:
-            hyper_params = json.load(file)
+    #     with open('models/contrastive_model_hyperparams.json', 'r') as file:
+    #         hyper_params = json.load(file)
 
-        index_pipeline.init_model(model_path='models/contrastive_model.pth',
-                                  model_hyperparams=hyper_params)
+    #     index_pipeline.init_model(model_path='models/contrastive_model.pth',
+    #                               model_hyperparams=hyper_params)
         
-        index_pipeline.batch_generate_embeddings()
+    #     index_pipeline.batch_generate_embeddings()
         
-        index_pipeline.build_and_insert_index(M = 16, 
-                                              ef = 100,
-                                              ef_construction = 200,
-                                              index_path='models/hnsw_index')
+    #     index_pipeline.build_and_insert_index(M = 16, 
+    #                                           ef = 100,
+    #                                           ef_construction = 200,
+    #                                           index_path='models/hnsw_index')
         
-        exit(0)
+    #     exit(0)
         
 
     print("Training Contrastive Learning model...")
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
-    pipeline = ContrastiveLearningPipeline(data, dummy_cols = dummy_cols)
+    pipeline = ContrastiveLearningPipeline(data, 
+                                           train_oot=2022,
+                                           val_oot=2020,
+                                           dummy_cols=dummy_cols)
 
     # initialize dataloaders
     pipeline.dataloaders(batch_size=16)

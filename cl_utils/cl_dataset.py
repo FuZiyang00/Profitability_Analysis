@@ -9,7 +9,9 @@ class ContrastivePolicyDataset(Dataset):
     def __init__(self, 
                  df: pd.DataFrame, 
                  target_column: str = 'target',
-                 n_negative: int = 4):
+                 n_negative: int = 4,
+                 dummy_cols: List[str] = None, 
+                 verbose: bool = True):
         
         """
         Custom Dataset for contrastive learning
@@ -19,25 +21,57 @@ class ContrastivePolicyDataset(Dataset):
         - label: index of the same class policy in candidates list
         """
 
-        self.df = df.copy()
+        self.sectors = df['Sector'].values
+        dummies = pd.get_dummies(df[dummy_cols], drop_first=False)
+        df = pd.concat([df,dummies], axis=1)
+
+        self.df = df.copy().reset_index(drop=True)
         self.target_column = target_column
+        self.targets = self.df[self.target_column].values.astype(np.int64)
+        
+        # create indices 
+        self._create_class_sector_indices()
+
+        drop_cols = dummy_cols + [self.target_column]
+        self.df = self.df.drop(columns=drop_cols).reset_index(drop=True)
+        if any(col in self.df.columns for col in dummy_cols):
+            raise ValueError("Dummy columns should not be in the dataframe after processing.")
+        
+        features_columns = self.df.columns.tolist()
+        self.features = self.df[features_columns].values.astype(np.float32)
+        self.input_dim = self.features.shape[1]
         self.n_negative = n_negative
         self.n_candidates = n_negative + 1  # +1 for the positive sample 
 
-        # separate positive and negative indices
-        self.class_0_indices = self.df[self.df[target_column] == 0].index.tolist()
-        self.class_1_indices = self.df[self.df[target_column] == 1].index.tolist()
-        # mapping class indices for easy access
-        self.class_indices = {0: self.class_0_indices, 1: self.class_1_indices}
+        if verbose:
+            print(f"Dataset initialized:")
+            print(f"- Features: {len(features_columns)}")
+            print(f"- Negative samples per query: {self.n_negative}")
+            print("Indices initialized for efficient sampling.")
 
-        # split features and targets 
-        features_columns = self.df.drop(columns=[self.target_column]).columns.tolist()
-        self.features = self.df[features_columns].values.astype(np.float32)
-        self.targets = self.df[self.target_column].values.astype(np.int64)
 
-        print(f"Dataset initialized:")
-        print(f"- Features: {len(features_columns)}")
-        print(f"- Negative samples per query: {self.n_negative}")
+    def _create_class_sector_indices(self):
+        """Create mapping of indices by class and sector for efficient sampling."""
+
+        unique_sectors = self.df['Sector'].unique()
+
+        # Create nested dictionary: {class: {sector: [indices]}}
+        self.class_sector_indices = {}
+
+        for cls in [0, 1]:
+            self.class_sector_indices[cls] = {}
+            class_df = self.df[self.df[self.target_column] == cls]
+            for sector in unique_sectors:
+                sector_indices = class_df[class_df["Sector"] == sector].index.tolist()
+                if sector_indices:  # Only add if sector has samples for this class
+                    self.class_sector_indices[cls][sector] = sector_indices
+        
+        # Also maintain simple class indices for fallback
+        self.class_indices = {
+            0: self.df[self.df[self.target_column] == 0].index.tolist(),
+            1: self.df[self.df[self.target_column] == 1].index.tolist()
+        }
+
     
     def __len__(self):
         """Returns the number of samples in the dataset."""
@@ -61,28 +95,21 @@ class ContrastivePolicyDataset(Dataset):
             raise IndexError("Index out of bounds for dataset length.")
         
         # get anchor sample
-        anchor_features = self.features[idx]
+        anchor_features = self.features[idx].ravel()
         anchor_target = self.targets[idx]
+        anchor_sector = self.sectors[idx]
 
-        # determine opposite class
-        opposite_class = 1 - anchor_target
-        same_class = anchor_target
-
-        # sample negative candidates
-        negative_indices = self._sample_indices(self.class_indices[opposite_class],
-                                                n_samples=self.n_negative,
-                                                exclude_idx=idx)
-
-        # sample one positive candidate from the same class
-        positive_indices = self._sample_indices(self.class_indices[same_class],
-                                                n_samples=1,
-                                                exclude_idx=idx)
-        
+        similar_idx, negative_indices = self._sample_sector_aware_indices(anchor_target,
+                                                                          anchor_sector, 
+                                                                          idx,
+                                                                          self.n_candidates)
+                                                                          
         # create candidates list
         candidates = []
         for neg_idx in negative_indices:
-            candidates.append(self.features[neg_idx])
-        candidates.append(self.features[positive_indices[0]])
+            candidates.append(self.features[neg_idx].ravel())
+        
+        candidates.append(self.features[similar_idx].ravel())
 
         # shuffle the candidates
         shuffled_indices = list(range(len(candidates)))
@@ -102,28 +129,46 @@ class ContrastivePolicyDataset(Dataset):
             'candidates': candidates,
             'labels': label
         }
-
-    def _sample_indices(self, class_indices: List[int],
-                        n_samples: int,
-                        exclude_idx: int = None):
-
-        # Remove exclude_idx if it exists in class_indices
-        available_indices = [idx for idx in class_indices if idx != exclude_idx]
-
-        if len(available_indices) < n_samples:
-            # sample with replacement if not enough samples
-            sample_indices = np.random.choice(available_indices,
-                                              size = n_samples,
-                                              replace=True).tolist()
-
+    
+    def _sample_sector_aware_indices(self,
+                                     target_class: int,
+                                     anchor_sector: str,
+                                     anchor_idx: int,
+                                     n_samples: int):
+        
+        """
+        Sample indices from the specified class, prioritizing the same sector.
+        """
+        # Try to sample from same sector first
+        sector_indices = self.class_sector_indices[target_class][anchor_sector]
+        available_sector_indices = [idx for idx in sector_indices if idx != anchor_idx]
+        
+        similar_index = None
+        if len(available_sector_indices) >= 1:
+            similar_index = random.sample(available_sector_indices, 1)
+        
         else:
-            # sample without replacement
-            sample_indices = np.random.choice(available_indices,
-                                              size = n_samples,
-                                              replace=False).tolist()
+            # Fallback to any index from the class
+            fallback_indices = [idx for idx in self.class_indices[target_class] if idx != anchor_idx]
+            similar_index = random.sample(fallback_indices, 1)
 
-        return sample_indices
+        opposite_class = 1 - target_class
+        opposite_indexes_list = []
+        opp_sector_indices = self.class_sector_indices[opposite_class][anchor_sector]
+        available_opp_sector_indices = [idx for idx in opp_sector_indices]
 
+        if len(available_opp_sector_indices) >= n_samples - 1:
+            opposite_indexes = random.sample(available_opp_sector_indices, n_samples - 1)
+        else:
+            # Fallback to any indices from the opposite class
+            fallback_opp_indices = [idx for idx in self.class_indices[opposite_class]]
+            opposite_indexes = random.sample(fallback_opp_indices, n_samples - 1)
+        
+        opposite_indexes_list.extend(opposite_indexes)
+
+        return similar_index, opposite_indexes_list
+
+    
     @staticmethod
     def collate_fn(batch):
         """

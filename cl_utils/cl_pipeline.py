@@ -14,24 +14,24 @@ class ContrastiveLearningPipeline:
                  val_oot: int = 2020,
                  dummy_cols: List[str] = None): 
         
-        train = data[data["year"] < train_oot].reset_index(drop=True)
-        test = data[data["year"] >= train_oot].reset_index(drop=True)
-
-        # split train and test sets
-        train_df, test_df = get_dummies_cols(train, test, dummy_cols) 
-        test_df.drop(columns=['year', 'is_company_italian'], inplace=True)
-        self.test_df = test_df
+        train_df = data[data["year"] < train_oot].reset_index(drop=True)
+        test_df = data[data["year"] >= train_oot].reset_index(drop=True)
 
         # split train_df into train and validation sets
         val_df = train_df[train_df['year'] > val_oot].reset_index(drop=True)
-        training_df = train_df[train_df['year'] <= val_oot].reset_index(drop=True)
-        training_df.drop(columns=['year', 'is_company_italian'], inplace=True) 
-        val_df.drop(columns=['year', 'is_company_italian'], inplace=True)
-        self.val_df = val_df 
-        self.training_df = training_df
+        train_df = train_df[train_df['year'] <= val_oot].reset_index(drop=True)
 
-        self.train_dataset = ContrastivePolicyDataset(training_df)
-        self.val_dataset = ContrastivePolicyDataset(val_df)
+        test_df.drop(columns=['year', 'is_company_italian'], inplace=True)
+        train_df.drop(columns=['year', 'is_company_italian'], inplace=True) 
+        val_df.drop(columns=['year', 'is_company_italian'], inplace=True)
+
+        self.training_df = train_df
+        self.val_df = val_df
+        self.test_df = test_df
+
+        self.train_dataset = ContrastivePolicyDataset(self.training_df, dummy_cols=dummy_cols)
+        self.val_dataset = ContrastivePolicyDataset(self.val_df, dummy_cols=dummy_cols)
+        self.input_dim = self.train_dataset.input_dim
 
         self.training_dataloader = None
         self.val_dataloader = None
@@ -74,14 +74,13 @@ class ContrastiveLearningPipeline:
                    temperature=0.07): 
         
         """Initialize the contrastive learning model."""
-        input_dim = self.training_df.shape[1] - 1  # Exclude target column
-        self.model = ContrastivePolicyNetwork(input_dim=input_dim,
+        self.model = ContrastivePolicyNetwork(input_dim=self.input_dim,
                                                hidden_dims=hidden_dims,
                                                embedding_dim=embedding_dim,
                                                dropout_rate=dropout_rate,
                                                temperature=temperature)
         
-        return {"input_dim": input_dim,
+        return {"input_dim": self.input_dim,
                 "hidden_dims": hidden_dims,
                 "embedding_dim": embedding_dim,
                 "dropout_rate": dropout_rate,
