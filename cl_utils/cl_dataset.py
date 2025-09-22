@@ -109,7 +109,7 @@ class ContrastivePolicyDataset(Dataset):
         for neg_idx in negative_indices:
             candidates.append(self.features[neg_idx].ravel())
         
-        candidates.append(self.features[similar_idx].ravel())
+        sim_pol = self.features[similar_idx].ravel()
 
         # shuffle the candidates
         shuffled_indices = list(range(len(candidates)))
@@ -126,6 +126,7 @@ class ContrastivePolicyDataset(Dataset):
 
         return {
             'anchors': anchor_features,
+            'sim_pol': sim_pol,
             'candidates': candidates,
             'labels': label
         }
@@ -175,6 +176,7 @@ class ContrastivePolicyDataset(Dataset):
         Custom collate function to handle the contrastive learning samples.
         """
         anchors = torch.stack([torch.from_numpy(item['anchors']) for item in batch])
+        sim_pol = torch.stack([torch.from_numpy(item['sim_pol']) for item in batch])
         labels = torch.tensor([item['labels'] for item in batch])
 
         # Keep candidates as nested list structure for flexible processing
@@ -188,6 +190,7 @@ class ContrastivePolicyDataset(Dataset):
         candidates = torch.stack(candidates_batch)
 
         return {'anchors': anchors,
+                'sim_pol': sim_pol,
                 'candidates': candidates,  # List of lists of tensors
                 'labels': labels}
 

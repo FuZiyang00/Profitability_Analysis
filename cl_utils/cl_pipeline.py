@@ -61,11 +61,6 @@ class ContrastiveLearningPipeline:
                                          collate_fn=ContrastivePolicyDataset.collate_fn)
 
         batch = next(iter(self.val_dataloader))
-        print(f"Batch shapes:")
-        print(f"- Anchors: {batch['anchors'].shape}")
-        print(f"- Candidates: {batch['candidates'].shape}")
-        print(f"- Labels: {batch['labels'].shape}")
-
     
     def init_model(self, 
                    hidden_dims=[256, 128], 
@@ -77,7 +72,7 @@ class ContrastiveLearningPipeline:
         self.model = ContrastivePolicyNetwork(input_dim=self.input_dim,
                                                hidden_dims=hidden_dims,
                                                embedding_dim=embedding_dim,
-                                               dropout_rate=dropout_rate,
+                                               dropout=dropout_rate,
                                                temperature=temperature)
         
         return {"input_dim": self.input_dim,

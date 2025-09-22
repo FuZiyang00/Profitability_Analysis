@@ -5,114 +5,93 @@ from torch.utils.data import DataLoader
 from typing import List
 import pandas as pd
 
-class PolicyEncoder(nn.Module):
-    """
-    Neural network encoder to transform policy features into embeddings.
-    """
-
-    def __init__(self, input_dim: int, 
-                 hidden_dims: List[int] = [128, 64],
-                 embedding_dim: int = 32,
-                 dropout_rate: float = 0.2):
-        
-        super(PolicyEncoder, self).__init__()
-        
-        layers = []
-        current_dim = input_dim
-        
-        # Build hidden layers
-        for hidden_dim in hidden_dims:
-            layers.append(nn.Linear(current_dim, hidden_dim))
-            layers.append(nn.ReLU())
-            layers.append(nn.BatchNorm1d(hidden_dim))
-            layers.append(nn.Dropout(dropout_rate))
-            current_dim = hidden_dim
-        
-        # Final embedding layer
-        layers.append(nn.Linear(current_dim, embedding_dim))
-        
-        self.encoder = nn.Sequential(*layers)
-        
-    def forward(self, x: torch.Tensor):
-        """
-        Forward pass through the encoder.
-        
-        Args:
-            x (torch.Tensor): Input tensor of shape (batch_size, input_dim).
-        
-        Returns:
-            torch.Tensor: Output embeddings of shape (batch_size, embedding_dim).
-        """
-        return self.encoder(x)
-    
-
 class ContrastivePolicyNetwork(nn.Module):
     """
-    Contrastive learning network for insurance policy classification.
-    
-    Architecture:
-        1. Encodes query and candidate policies into embeddings
-        2. Computes cosine similarities between query and candidates
-        3. Applies softmax and cross-entropy loss
-    """ 
-
-    def __init__(self, input_dim: int,
-                 hidden_dims: List[int] = [128, 64],
-                 embedding_dim: int = 32,
-                 dropout_rate: float = 0.2,
-                 temperature: float = 0.1, 
-                 verbose: bool = False):
-
+    Complete contrastive learning network for policy representations.
+    Combines encoder and contrastive learning in a single class.
+    """
+    def __init__(self, input_dim: int, 
+                 hidden_dims: List[int], 
+                 embedding_dim: int,
+                 dropout: float = 0.1, 
+                 temperature: float = 0.07):
         super(ContrastivePolicyNetwork, self).__init__()
-        
-        if verbose:
-            print("Initializing ContrastivePolicyNetwork with the following parameters:")
-            print(f"Working with input_dim: {input_dim} \n" 
-                f"hidden_dims: {hidden_dims} \n"
-                f"embedding_dim: {embedding_dim}, \n"
-                f"dropout_rate: {dropout_rate}, \n"
-                f"temperature: {temperature} \n")
-        
-        self.encoder = PolicyEncoder(input_dim = input_dim,
-                                     hidden_dims = hidden_dims, 
-                                     embedding_dim = embedding_dim,
-                                     dropout_rate = dropout_rate)
 
+        layers = []
+        prev_dim = input_dim
+        for h_dim in hidden_dims:
+            layers.extend([
+                nn.Linear(prev_dim, h_dim),
+                nn.ReLU(),
+                nn.Dropout(dropout)
+            ])
+            prev_dim = h_dim
+        
+        # Final embedding layer
+        layers.append(nn.Linear(prev_dim, embedding_dim))
+        self.encoder = nn.Sequential(*layers)
         self.temperature = temperature
-        self.embedding_dim = embedding_dim
 
-    def forward(self, query: torch.Tensor, candidates: torch.Tensor):
+    def encoder_forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass of the contrastive network.
+        Encode policies to normalized embeddings.
         
         Args:
-            query: Query policies tensor of shape (batch_size, input_dim)
-            candidates: Candidate policies tensor of shape (batch_size, n_candidates, input_dim)
-        
+            x: Input policy representation [batch_size, input_dim]
+            
         Returns:
-            Similarity scores of shape (batch_size, n_candidates)
+            embeddings: L2-normalized policy embeddings [batch_size, embedding_dim]
         """
-        batch_size, n_candidates, input_dim = candidates.shape
-
-        # Encode query policies
-        query_embeddings = self.encoder(query)  # (batch_size, embedding_dim)
-
-        # encode candidate policies
-        flatten_candidates = candidates.view(batch_size * n_candidates, input_dim) 
-        candidates_embeddings_flat = self.encoder(flatten_candidates)
-        candidates_embeddings = candidates_embeddings_flat.view(batch_size, n_candidates, 
-                                                           self.embedding_dim)
-
-        # computing cosine similarity 
-        query_embeddings_norm = F.normalize(query_embeddings, p=2, dim=1)
-        candidates_embeddings_norm = F.normalize(candidates_embeddings, p=2, dim=1)
-
-        similarities = torch.bmm(query_embeddings_norm.unsqueeze(1), 
-                                candidates_embeddings_norm.transpose(1, 2)).squeeze(1)
-
-        return similarities / self.temperature
+        embeddings = self.encoder(x)
+        return F.normalize(embeddings, p=2, dim=1)
     
-    def compute_loss(self, similarities: torch.Tensor, labels: torch.Tensor):
+    def forward(self, 
+                training_policy: torch.Tensor,
+                similar_policy: torch.Tensor,
+                dissimilar_policies: torch.Tensor):
+        
+        """
+        Forward pass for contrastive learning with efficient batched encoding.
+        
+        Args:
+            training_policy: [batch_size, input_dim]
+            similar_policy: [batch_size, input_dim]
+            dissimilar_policies: [batch_size, num_dissimilar, input_dim]
+            
+        Returns:
+            loss: Contrastive loss
+            similarities: Similarity scores for monitoring
+        """
+
+        batch_size, num_dissimilar, input_dim = dissimilar_policies.shape
+
+        training_input = torch.cat([
+            training_policy, # [batch_size, input_dim]
+            similar_policy,   # [batch_size, input_dim]
+            dissimilar_policies.view(batch_size * num_dissimilar, input_dim)# [batch_size * num_dissimilar, input_dim]
+        ], dim=0)
+
+        all_embeddings = self.encoder_forward(training_input)
+
+        # Split embeddings
+        training_emb = all_embeddings[:batch_size]  # [batch_size, embedding_dim]
+        similar_emb = all_embeddings[batch_size:2*batch_size]  # [batch
+        dissimilar_embs = all_embeddings[2*batch_size:].view(batch_size, num_dissimilar, -1)  # [batch_size, num_dissimilar, embedding_dim]
+
+        # Compute similarities
+        # Similarity with similar policy (positive pairs)
+        sim_positive = torch.sum(training_emb * similar_emb, dim=1) / self.temperature  # [batch_size]
+        
+        # Similarities with dissimilar policies (negative pairs)
+        sim_negative = torch.bmm(dissimilar_embs, training_emb.unsqueeze(2)).squeeze(2) / self.temperature  # [batch_size, num_dissimilar]
+        
+        # Combine similarities
+        all_similarities = torch.cat([sim_positive.unsqueeze(1), sim_negative], dim=1)  # [batch_size, 1 + num_dissimilar]
+        
+        return all_similarities
+    
+    def compute_loss(self, similarities: torch.Tensor, 
+                     labels: torch.Tensor) -> torch.Tensor:
         """
         Contrastive loss 
         Args:
@@ -123,14 +102,7 @@ class ContrastivePolicyNetwork(nn.Module):
         """
 
         return F.cross_entropy(similarities, labels)
-  
-    def get_embeddings(self, policies: torch.Tensor): 
-
-        if policies.dim() == 1:
-            return self.encoder(policies.unsqueeze(0)).squeeze(0)
-        else:
-            return self.encoder(policies)
-        
+    
 
 class ContrastivePolicyTrainer:
     """ Trainer class for the contrastivi policy network """
@@ -161,11 +133,12 @@ class ContrastivePolicyTrainer:
 
         for batch in dataloader:
             query = batch['anchors'].to(device)
+            sim_pol = batch['sim_pol'].to(device)
             candidates = batch['candidates'].to(device)
             labels = batch['labels'].to(device)
 
             # forward pass
-            similarities = self.model.forward(query, candidates)
+            similarities = self.model.forward(query, sim_pol, candidates)
             loss = self.model.compute_loss(similarities, labels)
 
             # Calculate accuracy
@@ -199,10 +172,11 @@ class ContrastivePolicyTrainer:
         with torch.no_grad():
             for batch in dataloader:
                 query = batch['anchors'].to(device)
+                sim_pol = batch['sim_pol'].to(device)
                 candidates = batch['candidates'].to(device)
                 labels = batch['labels'].to(device)
 
-                similarities = self.model.forward(query, candidates)
+                similarities = self.model.forward(query, sim_pol, candidates)
                 loss = self.model.compute_loss(similarities, labels)
 
                 # Calculate accuracy
